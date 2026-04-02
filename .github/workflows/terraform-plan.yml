@@ -45,7 +45,18 @@ jobs:
         run: |
           terraform plan -no-color -out=plan.tfplan
           terraform show -json plan.tfplan > plan.json
+          terraform show -no-color plan.tfplan > plan.txt
         continue-on-error: true
+
+      - name: Save Plan Text
+        id: plan_text
+        if: steps.plan.outcome == 'success'
+        run: |
+          {
+            echo "text<<DELIM"
+            cat plan.txt
+            echo "DELIM"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build Change Table
         id: table
@@ -95,7 +106,7 @@ jobs:
           FMT_OUTCOME:      ${{ steps.fmt.outcome }}
           VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
           PLAN_OUTCOME:     ${{ steps.plan.outcome }}
-          PLAN_STDOUT:      ${{ steps.plan.outputs.stdout }}
+          PLAN_TEXT:        ${{ steps.plan_text.outputs.text }}
           CHANGE_TABLE:     ${{ steps.table.outputs.table }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -123,7 +134,7 @@ jobs:
               '<details><summary>Raw plan を見る</summary>',
               '',
               '```terraform',
-              process.env.PLAN_STDOUT,
+              process.env.PLAN_TEXT,
               '```',
               '',
               '</details>',
