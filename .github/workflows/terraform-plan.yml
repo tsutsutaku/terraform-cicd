@@ -91,15 +91,21 @@ jobs:
 
       - name: Post Plan to PR
         uses: actions/github-script@v7
+        env:
+          FMT_OUTCOME:      ${{ steps.fmt.outcome }}
+          VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+          PLAN_OUTCOME:     ${{ steps.plan.outcome }}
+          PLAN_STDOUT:      ${{ steps.plan.outputs.stdout }}
+          CHANGE_TABLE:     ${{ steps.table.outputs.table }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const fmt      = '${{ steps.fmt.outcome }}';
-            const validate = '${{ steps.validate.outcome }}';
-            const plan     = '${{ steps.plan.outcome }}';
+            const fmt      = process.env.FMT_OUTCOME;
+            const validate = process.env.VALIDATE_OUTCOME;
+            const plan     = process.env.PLAN_OUTCOME;
 
             const icon = s => s === 'success' ? '✅' : '❌';
-            const table = `${{ steps.table.outputs.table }}` || '_テーブル生成スキップ_';
+            const table = process.env.CHANGE_TABLE || '_テーブル生成スキップ_';
 
             const output = [
               '### Terraform Plan 📋',
@@ -117,7 +123,7 @@ jobs:
               '<details><summary>Raw plan を見る</summary>',
               '',
               '```terraform',
-              `${{ steps.plan.outputs.stdout }}`,
+              process.env.PLAN_STDOUT,
               '```',
               '',
               '</details>',
