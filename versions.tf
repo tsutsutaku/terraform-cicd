@@ -9,8 +9,7 @@ terraform {
   }
 
   backend "s3" {
-    # TODO: 自分のS3バケット名に変更する
-    bucket       = "your-tfstate-bucket-name"
+    bucket       = "tfstate-terraform-cicd-043928387950"
     key          = "terraform-cicd/terraform.tfstate"
     region       = "ap-northeast-1"
     use_lockfile = true
