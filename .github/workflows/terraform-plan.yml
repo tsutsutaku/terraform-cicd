@@ -42,8 +42,52 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -no-color
+        run: |
+          terraform plan -no-color -out=plan.tfplan
+          terraform show -json plan.tfplan > plan.json
         continue-on-error: true
+
+      - name: Build Change Table
+        id: table
+        if: steps.plan.outcome == 'success'
+        run: |
+          python3 - <<'EOF'
+          import json, os
+
+          with open("plan.json") as f:
+              plan = json.load(f)
+
+          ACTION_META = {
+              "create":  ("➕", "create"),
+              "update":  ("✏️",  "update"),
+              "delete":  ("🗑️", "destroy"),
+              "replace": ("🔄", "replace"),
+              "no-op":   None,
+          }
+
+          rows = []
+          for r in plan.get("resource_changes", []):
+              actions = r["change"]["actions"]
+              if actions == ["no-op"]:
+                  continue
+              if "create" in actions and "delete" in actions:
+                  key = "replace"
+              else:
+                  key = actions[0]
+              meta = ACTION_META.get(key)
+              if meta:
+                  icon, label = meta
+                  rows.append(f"| {icon} | `{r['address']}` | {label} |")
+
+          if rows:
+              header = "| | Resource | Action |\n|---|---|---|"
+              table = header + "\n" + "\n".join(rows)
+          else:
+              table = "_変更なし_"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"table<<DELIM\n{table}\nDELIM\n")
+          EOF
 
       - name: Post Plan to PR
         uses: actions/github-script@v7
@@ -54,18 +98,23 @@ jobs:
             const validate = '${{ steps.validate.outcome }}';
             const plan     = '${{ steps.plan.outcome }}';
 
-            const fmtIcon      = fmt      === 'success' ? '✅' : '❌';
-            const validateIcon = validate === 'success' ? '✅' : '❌';
-            const planIcon     = plan     === 'success' ? '✅' : '❌';
+            const icon = s => s === 'success' ? '✅' : '❌';
+            const table = `${{ steps.table.outputs.table }}` || '_テーブル生成スキップ_';
 
             const output = [
               '### Terraform Plan 📋',
               '',
-              `- Format:   ${fmtIcon} \`${fmt}\``,
-              `- Validate: ${validateIcon} \`${validate}\``,
-              `- Plan:     ${planIcon} \`${plan}\``,
+              `| Check | Result |`,
+              `|---|---|`,
+              `| Format | ${icon(fmt)} \`${fmt}\` |`,
+              `| Validate | ${icon(validate)} \`${validate}\` |`,
+              `| Plan | ${icon(plan)} \`${plan}\` |`,
               '',
-              '<details><summary>Plan の詳細を見る</summary>',
+              '#### 変更リソース一覧',
+              '',
+              table,
+              '',
+              '<details><summary>Raw plan を見る</summary>',
               '',
               '```terraform',
               `${{ steps.plan.outputs.stdout }}`,
@@ -76,7 +125,6 @@ jobs:
               `> Triggered by @${{ github.actor }} on \`${{ github.event_name }}\``,
             ].join('\n');
 
-            // 既存のBotコメントがあれば更新、なければ新規作成
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
